@@ -1,0 +1,173 @@
+import random
+import sqlite3
+import sys
+
+CARDS_TABLE = "CREATE TABLE IF NOT EXISTS card (id INTEGER PRIMARY KEY, number TEXT, pin TEXT, balance INTEGER DEFAULT 0);"
+INSERT_CARD = "INSERT INTO card (number, pin) VALUES (?, ?);"
+SELECT_CARDS = "SELECT * FROM card WHERE number = (?) AND pin = (?);"
+
+connection = sqlite3.connect("card.s3db")
+cur = connection.cursor()
+cur.execute(CARDS_TABLE)
+
+
+def add_card(number, pin):
+    cur.execute(INSERT_CARD, (number, pin))  # number and pin will replace the ? in INSERT_CARD
+    # + ALWAYS has to be a Tuple
+
+
+def check_card(number, pin):
+    cur.execute(SELECT_CARDS, (number, pin))
+    return cur.fetchall()
+
+
+def check_luhn(number):
+    checker = []
+    checker_final = []
+    check_number = number[-1]
+    number = number[:len(number)-1]
+    for c, x in list(enumerate(number)):
+        if c % 2 == 0:
+            checker.append(int(x) * 2)
+        else:
+            checker.append(int(x))
+    for x in checker:
+        if int(x) > 9:
+            checker_final.append(int(x) - 9)
+        else:
+            checker_final.append(int(x))
+    checking_num = 10 - (sum(checker_final) % 10)
+    if str(checking_num) != check_number:
+        return 0    # print("Probably you made a mistake in the card number. Please try again!")
+    else:
+        return 1
+
+
+def card_exist(number):
+    exist = connection.execute(f"SELECT * FROM card WHERE number = {number}").fetchall()
+    if not exist:
+        return 0
+    else:
+        return 1
+
+
+def check_balance(number):
+    return connection.execute(f"SELECT balance FROM card WHERE number = {number}").fetchone()[0]
+
+
+while True:
+    print("1. Create an account")
+    print("2. Log into account")
+    print("0. Exit")
+
+    ui = int(input())
+    inn = 400000
+
+
+    class Cards:
+
+        def rnd_pin(self):
+            p = format(random.randint(0000, 9999), '04d')
+            return str(p)
+
+        def acc_num(self):
+            checksum = []
+            checksum_res = []
+            n = str(format(random.randint(000000000, 999999999), '09d'))
+            lst_n = list(str(inn)) + list(n)
+            for c, x in list(enumerate(lst_n)):
+                if c % 2 == 0:
+                    checksum.append(int(x) * 2)
+                else:
+                    checksum.append(int(x))
+            for x in checksum:
+                if int(x) > 9:
+                    checksum_res.append(int(x) - 9)
+                else:
+                    checksum_res.append(int(x))
+            checking_num = 10 - (sum(checksum_res) % 10)
+            if checking_num == 10:
+                checking_num = 0
+            acc = str(inn) + str(n) + str(checking_num)
+            return acc
+
+
+    if ui == 1:
+        print("Your Card has been created")
+        print("Your Card number:")
+        an = Cards().acc_num()
+        ap = Cards().rnd_pin()
+        add_card(an, ap)
+        connection.commit()
+        print(an)
+        print("Your card PIN:")
+        print(ap)
+
+    if ui == 2:
+        print("Enter your card number")
+        ci_num = input()
+        print("Enter your PIN:")
+        ci_PIN = input()
+        if check_card(ci_num, ci_PIN):
+            print("\nYou have successfully logged in!\n")
+            while True:
+                print("1. Balance")
+                print("2. Add income")
+                print("3. Do transfer")
+                print("4. Close Account")
+                print("5. Log out")
+                print("0. Exit")
+                ui = int(input())
+                if ui == 1:
+                    balance = int(connection.execute(f"SELECT balance FROM card WHERE number = {ci_num}").fetchone()[0])
+                    print(f"Balance: {balance}")
+                    continue
+                elif ui == 2:
+                    adder = int(input("Enter income: "))
+                    inc = connection.execute(f"SELECT balance FROM card WHERE number = {ci_num};").fetchone()
+                    inc = int(inc[0])
+                    connection.execute(f"UPDATE card SET balance= ({inc} + {adder}) WHERE number = {ci_num};")
+                    connection.commit()
+                    print("Income was added!")
+                    continue
+                elif ui == 3:
+                    print("Transfer")
+                    receiver = input("Enter card number: ")
+                    if receiver == ci_num:
+                        print("You can't transfer money to the same account!\n")
+                        continue
+                    elif check_luhn(receiver) == 1:
+                        if card_exist(receiver) == 1:
+                            trans = int(input("Enter how much money you want to transfer: "))
+                            if trans > check_balance(ci_num):
+                                print("Not enough money!\n")
+                            else:
+                                connection.execute(
+                                    f"UPDATE card SET balance= ({check_balance(ci_num)} - {trans}) WHERE number = {ci_num};")
+                                connection.execute(
+                                    f"UPDATE card SET balance= ({check_balance(receiver)} + {trans}) WHERE number = {receiver};")
+                                connection.commit()
+                                print("Success!")
+                        elif card_exist(receiver) == 0:
+                            print("Such a card does not exist.\n")
+                            continue
+                    elif check_luhn(receiver) == 0:
+                        print("Probably you made a mistake in the card number. Please try again!\n")
+                        continue
+                elif ui == 4:
+                    connection.execute(f"DELETE FROM card WHERE number = {ci_num}")
+                    connection.commit()
+                    print("The account has been closed!")
+                    break
+                elif ui == 5:
+                    print("\nYou have successfully logged out!")
+                    break
+                elif ui == 0:
+                    exit()
+        else:
+            print("Wrong card number or PIN!")
+            continue
+
+    if ui == 0:
+        print("\nBye!")
+        sys.exit()
